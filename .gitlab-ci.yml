@@ -1,0 +1,165 @@
+variables:
+  DOCKER_DRIVER: overlay
+  REGISTRY: "docker-registry.default.svc:5000"
+  NEXUS_REGISTRY: "nexus-docker.dev.ru:443"
+  NAMESPACE: 'example-stage'
+  NAMESPACE_PROD: 'example-prod'
+  APP_NAME: "example-app"
+  APP_IMAGE: "$REGISTRY/$NAMESPACE/$APP_NAME"
+  APP_IMAGE_PROD: "$NEXUS_REGISTRY/$NAMESPACE_PROD/$APP_NAME"
+  TEMP_IMAGE_TAG: "temp_$CI_PIPELINE_ID"
+  SONAR_HOST_URL: "https://sonarqube.dev.ru"
+  ALLURE_HOST_URL: "https://allure.dev.ru"
+
+image: "$REGISTRY/gitlab-runners-farm/gitlab-runner:latest"
+
+
+before_script:
+  - env
+  - service docker start
+  - sleep 5
+  - oc whoami -t | docker login $REGISTRY -u serviceaccount --password-stdin
+
+
+stages:
+  - build
+  - check_codestyle
+  - test
+  - deploy
+  - clean
+  - allure_report
+  - sonar_report
+
+
+build:
+  stage: build
+  retry: 2
+  script:
+    - docker pull $APP_IMAGE:latest || true
+    - docker build --cache-from $APP_IMAGE:latest --build-arg CI_PIPELINE_ID=$CI_PIPELINE_ID -f Dockerfile
+      -t $APP_IMAGE:$TEMP_IMAGE_TAG .
+    - docker push $APP_IMAGE:$TEMP_IMAGE_TAG
+  tags:
+    - openshift-stage
+  when: always
+
+
+check_codestyle:
+  image: "$APP_IMAGE:$TEMP_IMAGE_TAG"
+  stage: check_codestyle
+  variables:
+    PYTHONPATH: $CI_PROJECT_DIR/
+  script:
+    - pip install -r requirements-test.txt
+    - python -m flake8 --max-line-length=120 .
+  when: always
+
+
+unit_tests:
+  image: "$APP_IMAGE:$TEMP_IMAGE_TAG"
+  stage: test
+  services:
+    - postgres
+  variables:
+    PYTHONPATH: $CI_PROJECT_DIR/
+    POSTGRESQL_HOST_AUTH_METHOD: trust
+  before_script:
+    - env
+    - echo $CI_PROJECT_DIR
+  script:
+    - pip install -r requirements-test.txt
+    - python -m pytest --alluredir=$CI_PROJECT_DIR/allure.xml --cov-report term --cov-report xml:$CI_PROJECT_DIR/coverage.xml --cov=. tests/
+  artifacts:
+    paths:
+      - $CI_PROJECT_DIR/allure.xml
+      - $CI_PROJECT_DIR/coverage.xml
+  when: always
+
+
+####===--- STAGING ---===###
+deploy_stage:
+  stage: deploy
+  environment:
+    name: staging
+  retry: 2
+  script:
+    - oc tag $NAMESPACE/$APP_NAME:$TEMP_IMAGE_TAG $NAMESPACE/$APP_NAME:latest
+  tags:
+    - openshift-stage
+  only:
+    - staging
+####===--- STAGING ---===###
+
+
+####===--- DEMO ---===###
+deploy_preprod:
+  stage: deploy
+  environment:
+    name: preprod
+  retry: 2
+  script:
+    - oc tag $NAMESPACE/$APP_NAME:$TEMP_IMAGE_TAG $NAMESPACE/$APP_NAME:$CI_COMMIT_BRANCH
+  tags:
+    - openshift-stage
+  only:
+    - master
+####===--- DEMO ---===###
+
+
+####===--- PROD ---===###
+deploy_prod:
+  stage: deploy
+  variables:
+    PROD_APP_IMAGE: "$NEXUS_REGISTRY/$NAMESPACE_PROD/$APP_NAME"
+  environment:
+    name: prod
+  retry: 2
+  script:
+    - docker pull $APP_IMAGE:$TEMP_IMAGE_TAG
+    - docker tag $APP_IMAGE:$TEMP_IMAGE_TAG $PROD_APP_IMAGE:$CI_COMMIT_BRANCH
+    - docker login $NEXUS_REGISTRY -u $NEXUS_LOGIN -p $NEXUS_PASSWORD
+    - docker push $PROD_APP_IMAGE:release
+  tags:
+    - openshift-stage
+  only:
+    - /^release\/*/
+####===--- PROD ---===###
+
+
+clean:
+  stage: clean
+  retry: 2
+  script:
+     - "oc delete istag/$APP_NAME:$TEMP_IMAGE_TAG -n $NAMESPACE"
+  tags:
+    - openshift-stage
+  when: always
+
+allure_report:
+  image: "$APP_IMAGE:$TEMP_IMAGE_TAG"
+  stage: allure_report
+  retry: 2
+  after_script:
+    - zip -r allure.zip $CI_PROJECT_DIR/allure.xml
+    - curl -T "allure.zip" "$ALLURE_HOST_URL"
+  when: always
+  allow_failure: true
+
+sonarqube_report:
+  stage: sonar_report
+  retry: 2
+  before_script:
+    - env
+  image:
+    name: $REGISTRY/openshift/sonar-scanner-cli:latest
+    entrypoint: [""]
+  variables:
+    GIT_DEPTH: 0
+  script:
+    - sonar-scanner -Dsonar.qualitygate.wait=true
+      -Dsonar.projectKey=$APP_NAME
+      -Dsonar.projectVersion=1.0
+      -Dsonar.login=$NEXUS_LOGIN
+      -Dsonar.password=$NEXUS_PASSWORD
+      -Dsonar.python.coverage.reportPaths=$CI_PROJECT_DIR/coverage.xml
+  allow_failure: true
