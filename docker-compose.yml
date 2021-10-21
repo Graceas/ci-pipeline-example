@@ -1,0 +1,90 @@
+version: '3'
+volumes:
+  postgres_data:
+  redis_data:
+
+services:
+    redis:
+        image: 'redis:3.2.7'
+        volumes:
+            - redis_data:/var/lib/redis/data/redis
+
+    postgres:
+        image: postgres:9.6
+        environment:
+            - PGDATA=/var/lib/postgresql/data/pgdata
+        volumes:
+            - postgres_data:/var/lib/postgresql/data/pgdata
+        ports:
+        - "5432:5432"
+
+    webserver:
+        image: af-core:latest
+        build:
+            context: .
+        depends_on:
+            - postgres
+            - redis
+        environment:
+            - EXECUTOR=Celery
+            - POSTGRESQL_HOST=postgres
+            - REDIS_HOST=redis
+        volumes:
+            - ./airflow/dags:/usr/local/af/airflow/dags
+            - ./airflow/plugins:/usr/local/af/airflow/plugins
+            - ./core:/usr/local/af/core
+            - ./app/logs:/usr/local/af/core/app/logs
+            - ./app:/usr/local/af/app
+            - ./storage:/storage
+            - ./flaskapp:/usr/local/af/flaskapp
+        ports:
+            - "8080:8080"
+        command: webserver
+        healthcheck:
+            test: ["CMD-SHELL", "[ -f /usr/local/af/airflow-webserver.pid ]"]
+            interval: 30s
+            timeout: 30s
+            retries: 3
+
+    flower:
+        image: af-core:latest
+        depends_on:
+            - redis
+        environment:
+            - EXECUTOR=Celery
+            - POSTGRESQL_HOST=postgres
+            - REDIS_HOST=redis
+        ports:
+            - "5555:5555"
+        command: flower
+
+    scheduler:
+        image: af-core:latest
+        depends_on:
+            - webserver
+        volumes:
+            - ./airflow/dags:/usr/local/af/airflow/dags
+            - ./app/logs:/usr/local/af/core/app/logs
+            - ./core:/usr/local/af/core
+            - ./storage:/storage
+        environment:
+            - EXECUTOR=Celery
+            - POSTGRESQL_HOST=postgres
+            - REDIS_HOST=redis
+        command: scheduler
+
+    worker:
+        image: af-core:latest
+        depends_on:
+            - scheduler
+        volumes:
+            - ./airflow/dags:/usr/local/af/airflow/dags
+            - ./core/migrations:/usr/local/af/core/migrations
+            - ./app/logs:/usr/local/af/core/app/logs
+            - ./core:/usr/local/af/core
+            - ./storage:/storage
+        environment:
+            - EXECUTOR=Celery
+            - POSTGRESQL_HOST=postgres
+            - REDIS_HOST=redis
+        command: worker
