@@ -1,18 +1,42 @@
+global: {}
+
 namespace: dev
 
 image:
   repository: hashicorp/http-echo
   tag: latest
+  pullPolicy: Always
 
 redis:
   enabled: true
   port: '6379'
 
 test1:
+  replicas: 1
   name: 'test1'
   text: 'test1val'
   port: 5678
+  strategy:
+    type: Recreate
+  resources:
+    limits:
+      cpu: 100m
+      memory: 100Mi
+    requests:
+      cpu: 100m
+      memory: 100Mi
 
 test2:
+  replicas: 1
+  name: 'test2'
   text: 'test2val'
   port: 5678
+  strategy:
+    type: Recreate
+  resources:
+    limits:
+      cpu: 100m
+      memory: 100Mi
+    requests:
+      cpu: 100m
+      memory: 100Mi
