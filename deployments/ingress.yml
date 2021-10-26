@@ -1,0 +1,21 @@
+---
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: example-ingress
+  namespace: dev
+  annotations:
+    ingress.kubernates.io/rewrite-target: /
+spec:
+  rules:
+  - host: demo.example.com
+    http:
+      paths:
+        - path: /test1
+          backend:
+            serviceName: test1-service
+            servicePort: 5678
+        - path: /test2
+          backend:
+            serviceName: test2-service
+            servicePort: 5678

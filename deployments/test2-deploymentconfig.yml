@@ -1,0 +1,48 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test2-deployment
+  namespace: dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test2
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: test2
+    spec:
+      containers:
+      - args:
+        - "-text='hello world, remote logging = $AUTH_ENABLE'"
+        envFrom:
+          - configMapRef:
+              name: example-config
+        image: 'hashicorp/http-echo'
+        name: test2-app
+        resources:
+          limits:
+            cpu: 200m
+            memory: 200Mi
+          requests:
+            cpu: 100m
+            memory: 100Mi
+        ports:
+        - containerPort: 5678
+      restartPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test2
+spec:
+  ports:
+  - name: "5678"
+    port: 5678
+    targetPort: 5678
+  selector:
+    name: test2
