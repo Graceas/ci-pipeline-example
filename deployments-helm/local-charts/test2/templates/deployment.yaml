@@ -1,0 +1,35 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.test2.name }}-deployment
+  namespace: dev
+spec:
+  replicas: {{ default "1" .Values.test2.replicas }}
+  selector:
+    matchLabels:
+      app: {{ .Values.test2.name }}
+  strategy:
+    type: {{ default "Recreate" .Values.test2.strategy.type }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.test2.name }}
+    spec:
+      containers:
+      - args:
+        - {{ .Values.test2.text | quote }}
+        image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+        imagePullPolicy: {{ default "Always" .Values.image.pullPolicy }}
+        name: test2-app
+        resources:
+          limits:
+            cpu: {{ default "200m" .Values.resources.limits.cpu }}
+            memory: {{ default "200Mi" .Values.resources.limits.memory }}
+          requests:
+            cpu: {{ default "100m" .Values.resources.requests.cpu }}
+            memory: {{ default "100Mi" .Values.resources.requests.memory }}
+        ports:
+        - containerPort: {{ .Values.test2.port }}
+      restartPolicy: {{ default "Always" .Values.test2.restartPolicy }}
+

@@ -1,0 +1,20 @@
+apiVersion: v1
+name: deployments-helm
+version: 0.0.1
+dependencies:
+  - name: redis
+    version: 14.1.1
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
+    tags:
+      - queue
+  - name: test1
+    version: 0.0.1
+    repository: file://local-charts/test1
+    tags:
+      - test1-app
+  - name: test2
+    version: 0.0.1
+    repository: file://local-charts/test2
+    tags:
+      - test2-app

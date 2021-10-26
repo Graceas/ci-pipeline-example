@@ -1,0 +1,18 @@
+namespace: dev
+
+image:
+  repository: hashicorp/http-echo
+  tag: latest
+
+redis:
+  enabled: true
+  port: '6379'
+
+test1:
+  name: 'test1'
+  text: 'test1val'
+  port: 5678
+
+test2:
+  text: 'test2val'
+  port: 5678

@@ -1,0 +1,12 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: test1
+spec:
+  ports:
+  - name: {{ .Values.test1.port | qoute }}
+    port: {{ .Values.test1.port }}
+    targetPort: {{ .Values.test1.port }}
+  selector:
+    name: {{ .Values.test1.name }}
